@@ -1,88 +1,9 @@
-import torch
 import ot
+import torch
 
-from sklearn.decomposition import PCA
+import numpy as np
 
-
-def get_ground_barycenter(n_components):
-    """
-        Return a function which, given a list of len K of tensors x of shape (n, d), 
-        returns n PCA over the K points, and returns the eigenvectors of the PCA as a tensor of shape (n, d, n_components).
-
-        Parameters
-        ----------
-        n_components : int
-            Number of components to keep in the PCA.
-
-        # TODO: more efficient computations of eigenvectors by vectorizing and doing the PCA ourselves?
-    """
-    # def B(x, n_components=n_components):
-    #     """
-    #         Parameters
-    #         ----------
-    #         x : list of len K of tensors of shape (n, d)
-
-    #         Returns
-    #         -------
-    #         output : tensor of shape (n, d, n_components)
-    #             Tensor containing the eigenvectors of the PCA for each of the n points.
-    #     """
-    #     n, d = x[0].shape
-    #     pca = PCA(n_components)
-
-    #     output = torch.zeros((n, d, n_components))
-
-    #     for i in range(n):
-    #         z = torch.concatenate([x[k][i][None] for k in range(len(x))], axis=0)
-    #         pca.fit(z)
-    #         eigenvectors = pca.components_
-    #         output[i] = torch.from_numpy(eigenvectors.T)
-
-    #     return output
-
-    def B(x):
-        """
-            Parameters
-            ----------
-            x : list of len K of tensors of shape (n, d)
-
-            Returns
-            -------
-            output : tensor of shape (n, d, n_components)
-                Tensor containing the eigenvectors of the PCA for each of the n points.
-        """
-        X = torch.stack(x, dim=0)          # (K, n, d)
-        X = X - X.mean(dim=0, keepdim=True)
-        X = X.permute(1, 0, 2)             # (n, K, d)
-    
-        # Batched SVD
-        _, _, Vh = torch.linalg.svd(X, full_matrices=False)
-    
-        # Right singular vectors are the PCA directions
-        return Vh.transpose(-2, -1)[:, :, :n_components]
-    
-    return B
-
-
-def cost_pca(U, x):
-    """
-        Groundcost of the PCA (batched)
-
-        Parameters
-        ----------
-        U : tensor of shape (n, d, n_components)
-            Tensor containing the eigenvectors of the PCA for each of the n points.
-        x : tensor of shape (m, d)
-            Tensor containing the m points.
-
-        Returns
-        -------
-        C : tensor of shape (n, m)
-            Tensor containing the cost of the PCA for each of the n points and m points.
-    """
-    projs = torch.einsum("nij, nkj, mk -> nmi", U, U, x)
-    C = torch.linalg.norm(x[None] - projs, axis=-1)**2
-    return C
+from .utils_barycenters import barycenter_fixed_support, get_ground_barycenter, cost_pca
 
 
 class LiftedPCA():
@@ -90,58 +11,180 @@ class LiftedPCA():
         self.n_components = n_components
         self.n_samples = n_samples
 
-    def fit(self, samples, weights=None, fixed_point_its = 5, stop_threshold = 1e-20, X_init=None, seed=None, log=False):
+    def fit(self, samples_data, support_bary=None, weights_data=None, weight_bary=None, solver="fixed_weights",
+            fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=100, lr_bary=1, reg=1,
+            n_iter_alternate=10, seed=None):
         """
-            Fit the lifted PCA model to the given samples using the fixed point algorithm from [1],
-            with its POT implementation (available at https://pythonot.github.io/auto_examples/barycenters/plot_free_support_barycenter_generic_cost.html).
+            Fit the lifted PCA model to the given samples by computing the optimal barycenter.
+            There are 3 possible solvers: 
+            - with fixed support, which optimizes only over the weights, using the accelerated mirror descent algorithm of [2],
+            - with fixed weights, which optimizes only over the support, using the fixed-point algorithm of [1],
+            - with free support and free weights, which optimizes over both the support and the weights alternatively
 
-            For now, only optimize over the matrices on the Stiefel manifold, not over the weights (TODO).
+            The support of the barycenter is comonents_, and the weights of the barycenter are weights_.
 
-            [1] Tanguy, E., Delon, J., & Gozlan, N. (2024). Computing barycentres of measures for generic transport costs. arXiv preprint arXiv:2501.04016. 
+            [1] Tanguy, E., Delon, J., & Gozlan, N. (2024). Computing barycentres of measures for generic transport costs. arXiv preprint arXiv:2501.04016.
+
+            [2] Cuturi, M., & Doucet, A. (2014). Fast computation of Wasserstein barycenters. In International conference on machine learning (pp. 685-693). PMLR.
+
 
             Parameters
             ----------
-            samples :  (list of array-like) 
+            samples_data :  (list of array-like) 
                 List of K arrays of measure positions, each of shape (m_k, d_k).
-            fixed_point_its : int
-                Number of iterations for the fixed point algorithm.
-            stop_threshold : float
-                Threshold for stopping the fixed point algorithm.
-            X_init : array-like, optional
+            support_bary : array-like, optional
                 Initial guess for the barycenter positions, of shape (n_samples, d, n_components). If None, will be initialized randomly.
+            weights_data : (list of array-like) (optional, default uniform)
+                List of K arrays of measure weights, each of shape (m_k,).
+            weight_bary : tensor of shape (n_samples,) (optional, default uniform)
+                Weight of the barycenter (the optimized measure)
+            solver : str, optional (default "fixed_weights")
+                Solver to use for the barycenter computation. Can be "fixed_support", "fixed_weights" or "free".
+            fixed_point_its : int
+                Number of iterations for the fixed point algorithm (for "fixed_weights" or "free" solvers).
+            stop_threshold : float
+                Threshold for stopping the fixed point algorithm (for "fixed_weights" or "free" solvers).
+            n_iter_bary : int, optional (default 100)
+                Number of iterations of Mirror descent (for "fixed_support" or "free" solvers).
+            lr_bary : int, optional (default 1)
+                Learning rate for the mirror descent (for "fixed_support" or "free" solvers).
+            reg : float, optional (default 1)
+                Regularization for the Sinkhorn solver (for "fixed_support" or "free" solvers).
+            n_iter_alternate : int, optional (default 10)
+                Number of iterations for the alternate optimization (for "free" solver).
+            seed : int, optional (default None)
+                Random seed for reproducibility.
         """
-        d = samples[0].shape[1]
+        d = samples_data[0].shape[1]
 
         # Center samples
-        means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples], axis=0)
-        samples = samples - torch.mean(means, axis=0, keepdims=True)        
+        means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
+        samples_data = samples_data - torch.mean(means, axis=0, keepdims=True)
 
         if seed is not None:
             torch.manual_seed(seed)
 
-        if X_init is None:
+        if support_bary is None:
             # Initialize uniformly on the Stiefel manifold
             Z = torch.randn(self.n_samples, d, self.n_components)
-            X_init, _ = torch.linalg.qr(Z)
+            support_bary, _ = torch.linalg.qr(Z)
+
+        if weights_data is None:
+            weights_data = [torch.ones(m.shape[0]) / m.shape[0] for m in samples_data]  # weights each measure
+
+        if solver == "fixed_support":
+            weight_bary = self.barycenter_fixed_support(samples_data, support_bary, weights_data, weight_bary, n_iter_bary, lr_bary, reg)
+        elif solver == "fixed_weights":
+            support_bary = self.barycenter_fixed_weights(samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold)
+        elif solver == "free":
+            for i in range(n_iter_alternate):
+                support_bary = self.barycenter_fixed_weights(samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold)
+                weight_bary = self.barycenter_fixed_support(samples_data, support_bary, weights_data, weight_bary, n_iter_bary, lr_bary, reg)
+
+        self.components_ = support_bary
+        self.weights_ = weight_bary
+
+
+    def barycenter_fixed_weights(
+            self, samples_data, support_bary, weights_data=None, weight_bary=None, fixed_point_its = 5, stop_threshold = 1e-20, log=False
+            ):
+        """
+            Optimize the lifted PCA barycenter over the support of the barycenter, fixing the weights. For this, we use the fixed point algorithm from [1], 
+            with its POT implementation (available at https://pythonot.github.io/auto_examples/barycenters/plot_free_support_barycenter_generic_cost.html).
+
+            [1] Tanguy, E., Delon, J., & Gozlan, N. (2024). Computing barycentres of measures for generic transport costs. arXiv preprint arXiv:2501.04016.
+
+            Parameters
+            ----------
+            samples_data :  (list of array-like) 
+                List of K arrays of measure positions, each of shape (m_k, d_k).
+            support_bary : array-like
+                Initial guess for the barycenter positions, of shape (n_samples, d, n_components). If None, will be initialized randomly.
+            weights_data : (list of array-like) (optional, default uniform)
+                List of K arrays of measure weights, each of shape (m_k,).
+            weight_bary : tensor of shape (n_samples,) (optional, default uniform)
+                Weight of the barycenter (the optimized measure)
+            fixed_point_its : int
+                Number of iterations for the fixed point algorithm.
+            stop_threshold : float
+                Threshold for stopping the fixed point algorithm.
+        """
+
 
         B = get_ground_barycenter(self.n_components)
-        cost_list = [cost_pca for k in range(len(samples))]
+        cost_list = [cost_pca for k in range(len(samples_data))]
 
-        if weights is None:
-            weights = [torch.ones(m.shape[0]) / m.shape[0] for m in samples]  # weights each measure
-
-        X_bar, log_dict = ot.lp.free_support_barycenter_generic_costs(
-            samples,
-            weights,
-            X_init,
+        X_bary, log_dict = ot.lp.free_support_barycenter_generic_costs(
+            samples_data,
+            weights_data,
+            support_bary,
             cost_list,
             B,
             numItermax=fixed_point_its,
             stopThr=stop_threshold,
             log=True,
+            a=weight_bary
         )
 
-        self.components_ = X_bar
+        if log:
+            return X_bary, log_dict
+
+        return X_bary
+
+
+
+    def barycenter_fixed_support(self, samples_data, support_bary=None, weights_data=None, weight_bary=None, n_iter=100, lr_bary=1, reg=1, log=False):
+        """
+            Optimize the lifted PCA barycenter over the weights of the barycenter, fixing the support. For this, we use the accelerated mirror descent algorithm from [2].
+
+            [2] Cuturi, M., & Doucet, A. (2014). Fast computation of Wasserstein barycenters. In International conference on machine learning (pp. 685-693). PMLR.
+
+            Parameters
+            ----------
+            samples_data :  (list of array-like) 
+                List of K arrays of measure positions, each of shape (m_k, d_k).
+            support_bary : array-like
+                Initial guess for the barycenter positions, of shape (n_samples, d, n_components). If None, will be initialized randomly.
+            weights_data : (list of array-like) (optional, default uniform)
+                List of K arrays of measure weights, each of shape (m_k,).
+            weight_bary : tensor of shape (n_samples,) (optional, default uniform)
+                Weight of the barycenter (the optimized measure)
+            n_iter : int, optional (default 100)
+                Number of iterations of Mirror descent
+            lr_bary : int, optional (default 1)
+                Learning rate for the mirror descent
+            reg : float, optional (default 1)
+                Regularization for the Sinkhorn solver
+            log: boolean, optional (default False)
+                If True, return the loss along iterations
+        """
+        if log:
+            weights, log_dict = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data,
+                                                         lr_bar=lr_bary, mode="sinkhorn", reg=reg, n_iter=n_iter, log=log)
+        else:
+            weights = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data, lr_bar=lr_bary,
+                                               mode="sinkhorn", reg=reg, n_iter=n_iter)
 
         if log:
-            return log_dict
+            return weights, log_dict
+
+        return weights
+
+
+    def cost_barycenter(self, samples_data, weights_data=None):
+        n_distr = len(samples_data)
+
+        support_bary = self.components_
+        weight_bary = self.weights_
+
+        if weights_data is None:
+            weights_data = [torch.ones(m.shape[0]) / m.shape[0] for m in samples_data]  # weights each measure
+
+        L_ot_costs = np.zeros(n_distr)
+        for k in range(n_distr):
+            C = cost_pca(support_bary, samples_data[k])
+            b = weights_data[k]
+
+            L_ot_costs[k] = ot.emd2(weight_bary, b, C)
+
+        return np.mean(L_ot_costs)

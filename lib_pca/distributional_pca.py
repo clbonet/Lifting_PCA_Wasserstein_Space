@@ -1,4 +1,9 @@
+import ot
 import torch
+
+import numpy as np
+
+from .utils_barycenters import cost_pca
 
 
 class DistributionalPCA():
@@ -56,6 +61,22 @@ class DistributionalPCA():
         )
 
         self.fit(means_X, covs_X)
+
+    def cost_barycenter(self, samples_data, weights_data=None):
+        n_distr = len(samples_data)
+
+        support_bary = self.components_[:,:,None]
+
+        if weights_data is None:
+            weights_data = [torch.ones(m.shape[0]) / m.shape[0] for m in samples_data]  # weights each measure
+
+        L_ot_costs = np.zeros(n_distr)
+        for k in range(n_distr):
+            C = cost_pca(support_bary, samples_data[k])
+            b = weights_data[k]
+            L_ot_costs[k] = ot.emd2(torch.tensor([1.]), b, C)
+
+        return np.mean(L_ot_costs)
 
 
 def pad_and_group_by_class(x, labels):
