@@ -11,8 +11,9 @@ class LiftedPCA():
         self.n_components = n_components
         self.n_samples = n_samples
 
+
     def fit(self, samples_data, support_bary=None, weights_data=None, weight_bary=None, solver="fixed_weights",
-            fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=100, lr_bary=1, reg=1,
+            fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=100, lr_bary=1, reg=1, stop_threshold_fixed_support=1e-4,
             n_iter_alternate=10, seed=None):
         """
             Fit the lifted PCA model to the given samples by computing the optimal barycenter.
@@ -50,39 +51,63 @@ class LiftedPCA():
                 Learning rate for the mirror descent (for "fixed_support" or "free" solvers).
             reg : float, optional (default 1)
                 Regularization for the Sinkhorn solver (for "fixed_support" or "free" solvers).
+            stop_threshold_fixed_support : float, optional (default 1e-4)
+                Threshold for stopping the Mirror Descent (for "fixed_support" solver).
             n_iter_alternate : int, optional (default 10)
                 Number of iterations for the alternate optimization (for "free" solver).
             seed : int, optional (default None)
                 Random seed for reproducibility.
         """
         d = samples_data[0].shape[1]
+        device = samples_data[0].device
 
         # Center samples
-        means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
-        samples_data = samples_data - torch.mean(means, axis=0, keepdims=True)
+        samples_data = self.center_data(samples_data)
 
         if seed is not None:
             torch.manual_seed(seed)
 
         if support_bary is None:
             # Initialize uniformly on the Stiefel manifold
-            Z = torch.randn(self.n_samples, d, self.n_components)
+            Z = torch.randn(self.n_samples, d, self.n_components).to(device)
             support_bary, _ = torch.linalg.qr(Z)
 
         if weights_data is None:
-            weights_data = [torch.ones(m.shape[0]) / m.shape[0] for m in samples_data]  # weights each measure
+            weights_data = [torch.ones(m.shape[0], device=device) / m.shape[0] for m in samples_data]  # weights each measure
 
         if solver == "fixed_support":
-            weight_bary = self.barycenter_fixed_support(samples_data, support_bary, weights_data, weight_bary, n_iter_bary, lr_bary, reg)
+            weight_bary = self.barycenter_fixed_support(
+                samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg
+                )
         elif solver == "fixed_weights":
-            support_bary = self.barycenter_fixed_weights(samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold)
+            support_bary = self.barycenter_fixed_weights(
+                samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold
+                )
         elif solver == "free":
             for i in range(n_iter_alternate):
-                support_bary = self.barycenter_fixed_weights(samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold)
-                weight_bary = self.barycenter_fixed_support(samples_data, support_bary, weights_data, weight_bary, n_iter_bary, lr_bary, reg)
+                support_bary = self.barycenter_fixed_weights(
+                    samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold
+                    )
+                weight_bary = self.barycenter_fixed_support(
+                    samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg
+                    )
 
         self.components_ = support_bary
         self.weights_ = weight_bary
+
+
+    def center_data(self, samples_data):
+        """
+            Center the data for each sample.
+
+            Parameters
+            ----------
+            samples_data :  (list of array-like) 
+                List of K arrays of measure positions, each of shape (m_k, d_k).
+        """
+        means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
+        samples_data_centered = samples_data - torch.mean(means, axis=0, keepdims=True)
+        return samples_data_centered
 
 
     def barycenter_fixed_weights(
@@ -110,7 +135,6 @@ class LiftedPCA():
                 Threshold for stopping the fixed point algorithm.
         """
 
-
         B = get_ground_barycenter(self.n_components)
         cost_list = [cost_pca for k in range(len(samples_data))]
 
@@ -133,7 +157,8 @@ class LiftedPCA():
 
 
 
-    def barycenter_fixed_support(self, samples_data, support_bary=None, weights_data=None, weight_bary=None, n_iter=100, lr_bary=1, reg=1, log=False):
+    def barycenter_fixed_support(self, samples_data, support_bary=None, weights_data=None, weight_bary=None,
+                                 n_iter=100, stop_threshold=1e-5, lr_bary=1, reg=1, log=False):
         """
             Optimize the lifted PCA barycenter over the weights of the barycenter, fixing the support. For this, we use the accelerated mirror descent algorithm from [2].
 
@@ -150,7 +175,9 @@ class LiftedPCA():
             weight_bary : tensor of shape (n_samples,) (optional, default uniform)
                 Weight of the barycenter (the optimized measure)
             n_iter : int, optional (default 100)
-                Number of iterations of Mirror descent
+                Maximum number of iterations of Mirror descent
+            stop_threshold : float, optional (default 1e-5)
+                Stopping threshold for the mirror descent
             lr_bary : int, optional (default 1)
                 Learning rate for the mirror descent
             reg : float, optional (default 1)
@@ -160,9 +187,9 @@ class LiftedPCA():
         """
         if log:
             weights, log_dict = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data,
-                                                         lr_bar=lr_bary, mode="sinkhorn", reg=reg, n_iter=n_iter, log=log)
+                                                         lr_bar=lr_bary, stopThr=stop_threshold, mode="sinkhorn", reg=reg, n_iter=n_iter, log=log)
         else:
-            weights = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data, lr_bar=lr_bary,
+            weights = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data, lr_bar=lr_bary, stopThr=stop_threshold,
                                                mode="sinkhorn", reg=reg, n_iter=n_iter)
 
         if log:
@@ -173,12 +200,18 @@ class LiftedPCA():
 
     def cost_barycenter(self, samples_data, weights_data=None):
         n_distr = len(samples_data)
+        device = samples_data[0].device
+
+        samples_data = self.center_data(samples_data)
 
         support_bary = self.components_
         weight_bary = self.weights_
 
         if weights_data is None:
-            weights_data = [torch.ones(m.shape[0]) / m.shape[0] for m in samples_data]  # weights each measure
+            weights_data = [torch.ones(m.shape[0], device=device) / m.shape[0] for m in samples_data]  # weights each measure
+
+        if weight_bary is None:
+            weight_bary = torch.ones(support_bary.shape[0], device=device) / support_bary.shape[0]
 
         L_ot_costs = np.zeros(n_distr)
         for k in range(n_distr):
@@ -186,5 +219,8 @@ class LiftedPCA():
             b = weights_data[k]
 
             L_ot_costs[k] = ot.emd2(weight_bary, b, C)
+
+            # print(k, L_ot_costs[k], ot.sinkhorn2(weight_bary, b, C/C.max(), 0.01) * C.max())
+            # L_ot_costs[k] = ot.sinkhorn2(weight_bary, b, C/C.max(), 1) * C.max()
 
         return np.mean(L_ot_costs)
