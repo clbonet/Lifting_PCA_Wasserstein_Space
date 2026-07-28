@@ -118,7 +118,7 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
         lr_bar : int, optional (default 1)
             Learning rate for the mirror descent
         mode : str, optional (default "sinkhorn")
-            Mode for the OT solver
+            Mode for the OT solver ("sinkhorn" or "proximal")
         reg : float, optional (default 1)
             Regularization for the Sinkhorn solver
         log: boolean, optional (default False)
@@ -132,10 +132,12 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
         weights_barycenter = torch.ones(n_distr, device=device) / n_distr
 
     if weights_samples is None:
-        weights_samples = [torch.ones(x.shape[0], device=device)/x.shape[0] for x in samples]
+        weights_samples = torch.ones(n_distr, samples[0].shape[0], device=device) / samples[0].shape[0]
+    else:
+        weights_samples = torch.cat([weights_samples[k][None] for k in range(len(weights_samples))], dim=0)
 
     # Precompute once: support is fixed in this solver
-    C_list = [cost_pca(support, samples[k]) for k in range(n_distr)]
+    C_list = torch.cat([cost_pca(support, samples[k])[None] for k in range(n_distr)], dim=0) # shape (K, n, m)
 
     barycenter = torch.ones(n, device=device) / n if init_weights is None else init_weights.clone().detach()
     barycenter.requires_grad_(True)
@@ -150,20 +152,30 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
         barycenter.data = (1-1./beta) * barhat + bartilde / beta
 
         # Compute full loss barycenter (by solving K OT problems)
-        loss = torch.zeros(1, device=device)
-        for k in range(n_distr):
-            C = C_list[k]
-            b = weights_samples[k]
+        C_maxes = torch.tensor([C_list[k].max() for k in range(n_distr)], device=device)
 
-            if mode == "emd":
-                loss += weights_barycenter[k] * ot.emd2(barycenter, b, C)
-            elif mode == "sinkhorn":
-                loss += weights_barycenter[k] * ot.sinkhorn2(barycenter, b, C/C.max(), reg) * C.max()
+        losses = ot.batch.solve_batch(
+            C_list/C_maxes[:, None, None],
+            reg=reg,
+            a=barycenter,
+            b = weights_samples,
+            method=mode,
+            grad="last_step"
+        )
 
-        # loss.backward()
-        # Compute potentials by taking the gradient, center the alpha
-        # grad_u = barycenter.grad - barycenter.grad.mean()
-        # barycenter.grad.zero_()
+        loss = torch.sum(weights_barycenter * losses.value_linear * C_maxes)
+
+        # Compute full loss barycenter (by solving K OT problems)
+        # loss = torch.zeros(1, device=device)
+
+        # for k in range(n_distr):
+        #     C = C_list[k]
+        #     b = weights_samples[k]
+
+        #     if mode == "emd":
+        #         loss += weights_barycenter[k] * ot.emd2(barycenter, b, C)
+        #     elif mode == "sinkhorn":
+        #         loss += weights_barycenter[k] * ot.sinkhorn2(barycenter, b, C/C.max(), reg) * C.max()
 
         barycenter_grad = torch.autograd.grad(loss, barycenter)[0]
         grad_u = barycenter_grad - barycenter_grad.mean()
@@ -184,7 +196,7 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
         dico_log = {"loss": tab_loss}
         return barycenter.detach(), dico_log
 
-    plt.plot(tab_loss)
-    plt.show()
+    # plt.plot(tab_loss)
+    # plt.show()
     
     return barycenter.detach()

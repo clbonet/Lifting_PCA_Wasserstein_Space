@@ -13,8 +13,8 @@ class LiftedPCA():
 
 
     def fit(self, samples_data, support_bary=None, weights_data=None, weight_bary=None, solver="fixed_weights",
-            fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=100, lr_bary=1, reg=1, stop_threshold_fixed_support=1e-4,
-            n_iter_alternate=10, seed=None):
+            fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=500, lr_bary=1, reg=1, stop_threshold_fixed_support=1e-20,
+            n_iter_alternate=10, seed=None, mode="sinkhorn"):
         """
             Fit the lifted PCA model to the given samples by computing the optimal barycenter.
             There are 3 possible solvers: 
@@ -57,6 +57,8 @@ class LiftedPCA():
                 Number of iterations for the alternate optimization (for "free" solver).
             seed : int, optional (default None)
                 Random seed for reproducibility.
+            mode: str, optional (default "sinkhorn")
+                Mode for the OT solver ("sinkhorn" or "proximal") (for "fixed support" solver)
         """
         d = samples_data[0].shape[1]
         device = samples_data[0].device
@@ -77,7 +79,7 @@ class LiftedPCA():
 
         if solver == "fixed_support":
             weight_bary = self.barycenter_fixed_support(
-                samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg
+                samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg, mode
                 )
         elif solver == "fixed_weights":
             support_bary = self.barycenter_fixed_weights(
@@ -89,7 +91,7 @@ class LiftedPCA():
                     samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold
                     )
                 weight_bary = self.barycenter_fixed_support(
-                    samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg
+                    samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg, mode
                     )
 
         self.components_ = support_bary
@@ -158,7 +160,7 @@ class LiftedPCA():
 
 
     def barycenter_fixed_support(self, samples_data, support_bary=None, weights_data=None, weight_bary=None,
-                                 n_iter=100, stop_threshold=1e-5, lr_bary=1, reg=1, log=False):
+                                 n_iter=100, stop_threshold=1e-5, lr_bary=1, reg=1, mode="sinkhorn", log=False):
         """
             Optimize the lifted PCA barycenter over the weights of the barycenter, fixing the support. For this, we use the accelerated mirror descent algorithm from [2].
 
@@ -182,15 +184,17 @@ class LiftedPCA():
                 Learning rate for the mirror descent
             reg : float, optional (default 1)
                 Regularization for the Sinkhorn solver
+            mode: str, optional (default "sinkhorn")
+                Mode for the OT solver ("sinkhorn" or "proximal")
             log: boolean, optional (default False)
                 If True, return the loss along iterations
         """
         if log:
             weights, log_dict = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data,
-                                                         lr_bar=lr_bary, stopThr=stop_threshold, mode="sinkhorn", reg=reg, n_iter=n_iter, log=log)
+                                                         lr_bar=lr_bary, stopThr=stop_threshold, mode=mode, reg=reg, n_iter=n_iter, log=log)
         else:
             weights = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data, lr_bar=lr_bary, stopThr=stop_threshold,
-                                               mode="sinkhorn", reg=reg, n_iter=n_iter)
+                                               mode=mode, reg=reg, n_iter=n_iter)
 
         if log:
             return weights, log_dict
