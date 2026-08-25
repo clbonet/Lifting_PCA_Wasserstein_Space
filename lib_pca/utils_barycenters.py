@@ -125,7 +125,7 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
             If True, return the loss along iterations
     """
     n, d, n_components = support.shape
-    n_distr = samples.shape[0]
+    n_distr = len(samples)
     device = support.device
 
     if weights_barycenter is None:

@@ -1,7 +1,16 @@
+import os
+
+os.environ["GEOMSTATS_BACKEND"] = "pytorch"
+os.environ["SCIPY_ARRAY_API"] = "1"
+
 import ot
 import torch
 
 import numpy as np
+
+from geomstats.geometry.stiefel import Stiefel
+from geomstats.geometry.grassmannian import Grassmannian
+from geomstats.learning.frechet_mean import FrechetMean
 
 from .utils_barycenters import barycenter_fixed_support, get_ground_barycenter, cost_pca
 
@@ -62,6 +71,7 @@ class LiftedPCA():
         """
         d = samples_data[0].shape[1]
         device = samples_data[0].device
+        dtype = samples_data[0].dtype
 
         # Center samples
         samples_data = self.center_data(samples_data)
@@ -71,7 +81,7 @@ class LiftedPCA():
 
         if support_bary is None:
             # Initialize uniformly on the Stiefel manifold
-            Z = torch.randn(self.n_samples, d, self.n_components).to(device)
+            Z = torch.randn(self.n_samples, d, self.n_components, dtype=dtype).to(device)
             support_bary, _ = torch.linalg.qr(Z)
 
         if weights_data is None:
@@ -108,7 +118,9 @@ class LiftedPCA():
                 List of K arrays of measure positions, each of shape (m_k, d_k).
         """
         means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
-        samples_data_centered = samples_data - torch.mean(means, axis=0, keepdims=True)
+        # samples_data_centered = samples_data - torch.mean(means, axis=0, keepdims=True)
+        mean = torch.mean(means, axis=0, keepdims=True)
+        samples_data_centered = [samples_data[k] - mean for k in range(len(samples_data))]
         return samples_data_centered
 
 
@@ -228,3 +240,25 @@ class LiftedPCA():
             # L_ot_costs[k] = ot.sinkhorn2(weight_bary, b, C/C.max(), 1) * C.max()
 
         return np.mean(L_ot_costs)
+
+
+    def get_barycenter_components(self):
+        """
+            Computes the barycenter of the distribution of PCA components.
+        """
+        # stiefel = Stiefel(self.components_.shape[1], self.n_components)
+        grassmann = Grassmannian(self.components_.shape[1], self.n_components)
+
+
+        # Intrinsic Fréchet/Karcher mean
+        # mean_estimator = FrechetMean(space=stiefel)
+        mean_estimator = FrechetMean(space=grassmann)
+
+        projs = torch.einsum("idq,ieq->ide", self.components_, self.components_)
+
+        mean_estimator.fit(projs, weights=self.weights_)
+
+        P = mean_estimator.estimate_
+        eigenvalues, eigenvectors = torch.linalg.eigh(P)
+
+        return eigenvectors[:, -self.n_components:]
