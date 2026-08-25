@@ -157,7 +157,7 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
             C_list/C_maxes[:, None, None],
             reg=reg,
             a=barycenter,
-            b = weights_samples,
+            b=weights_samples,
             method=mode,
             grad="last_step"
         )

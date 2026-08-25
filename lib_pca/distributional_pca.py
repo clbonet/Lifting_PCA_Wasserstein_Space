@@ -37,7 +37,7 @@ class DistributionalPCA():
         eigenvals[eigenvals < 0.0] = 0.0
 
         eigenvals_sorted, inds_sort = torch.sort(eigenvals, descending=True) 
-        self.explained_variance_ = eigenvals_sorted[:self.n_components] / torch.sum(eigenvals_sorted)
+        self.explained_variance_ratio_ = eigenvals_sorted[:self.n_components] / torch.sum(eigenvals_sorted)
         self.components_ = eigenvecs[:, inds_sort[:self.n_components]].T
 
     def fit_from_samples(self, X, y):

@@ -108,7 +108,7 @@ class LiftedPCA():
         self.weights_ = weight_bary
 
 
-    def center_data(self, samples_data):
+    def center_data(self, samples_data, mean=None):
         """
             Center the data for each sample.
 
@@ -117,10 +117,14 @@ class LiftedPCA():
             samples_data :  (list of array-like) 
                 List of K arrays of measure positions, each of shape (m_k, d_k).
         """
-        means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
-        # samples_data_centered = samples_data - torch.mean(means, axis=0, keepdims=True)
-        mean = torch.mean(means, axis=0, keepdims=True)
-        samples_data_centered = [samples_data[k] - mean for k in range(len(samples_data))]
+        if mean is None:
+            means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
+            # samples_data_centered = samples_data - torch.mean(means, axis=0, keepdims=True)
+            self.mean_ = torch.mean(means, axis=0, keepdims=True)
+        else:
+            self.mean_ = mean
+
+        samples_data_centered = [samples_data[k] - self.mean_ for k in range(len(samples_data))]
         return samples_data_centered
 
 
@@ -218,7 +222,7 @@ class LiftedPCA():
         n_distr = len(samples_data)
         device = samples_data[0].device
 
-        samples_data = self.center_data(samples_data)
+        samples_data = self.center_data(samples_data, mean=self.mean_)
 
         support_bary = self.components_
         weight_bary = self.weights_
