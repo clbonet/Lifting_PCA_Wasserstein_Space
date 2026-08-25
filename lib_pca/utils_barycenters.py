@@ -138,6 +138,7 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
 
     # Precompute once: support is fixed in this solver
     C_list = torch.cat([cost_pca(support, samples[k])[None] for k in range(n_distr)], dim=0) # shape (K, n, m)
+    C_maxes = torch.tensor([C_list[k].max() for k in range(n_distr)], device=device)
 
     barycenter = torch.ones(n, device=device) / n if init_weights is None else init_weights.clone().detach()
     barycenter.requires_grad_(True)
@@ -152,8 +153,6 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
         barycenter.data = (1-1./beta) * barhat + bartilde / beta
 
         # Compute full loss barycenter (by solving K OT problems)
-        C_maxes = torch.tensor([C_list[k].max() for k in range(n_distr)], device=device)
-
         losses = ot.batch.solve_batch(
             C_list/C_maxes[:, None, None],
             reg=reg,
