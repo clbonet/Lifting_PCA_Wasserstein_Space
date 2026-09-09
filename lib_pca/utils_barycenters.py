@@ -53,7 +53,7 @@ def get_ground_barycenter(n_components):
                 Tensor containing the eigenvectors of the PCA for each of the n points.
         """
         X = torch.stack(x, dim=0)          # (K, n, d)
-        X = X - X.mean(dim=0, keepdim=True)
+        # X = X - X.mean(dim=0, keepdim=True)
         X = X.permute(1, 0, 2)             # (n, K, d)
     
         # Batched SVD
@@ -128,6 +128,7 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
     n, d, n_components = support.shape
     n_distr = len(samples)
     device = support.device
+    dtype = support.dtype
 
     if weights_barycenter is None:
         weights_barycenter = torch.ones(n_distr, device=device) / n_distr
@@ -141,50 +142,43 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
     C_list = torch.cat([cost_pca(support, samples[k])[None] for k in range(n_distr)], dim=0) # shape (K, n, m)
     C_maxes = torch.tensor([C_list[k].max() for k in range(n_distr)], device=device)
 
-    barycenter = torch.ones(n, device=device) / n if init_weights is None else init_weights.clone().detach()
-    barycenter.requires_grad_(True)
+    barycenter = torch.ones(n, device=device, dtype=dtype) / n if init_weights is None else init_weights.clone().detach()
 
-    tab_loss= []
-    barhat = barycenter.clone().detach()
-    bartilde = barycenter.clone().detach()
+    tab_loss = []
+    barhat = barycenter.clone()
+    bartilde = barycenter.clone()
 
     for i in range(n_iter):
         # Nesterov Acceleration
         beta = (i+1)/2
-        barycenter.data = (1-1./beta) * barhat + bartilde / beta
+        barycenter = (1-1./beta) * barhat + bartilde / beta
 
-        # Compute full loss barycenter (by solving K OT problems)
-        losses = ot.batch.solve_batch(
+        # Solve K OT problems with Sinkhorn
+        results = ot.batch.solve_batch(
             C_list/C_maxes[:, None, None],
             reg=reg,
             a=barycenter,
             b=weights_samples,
             method=mode,
-            grad="last_step"
         )
 
-        loss = torch.sum(weights_barycenter * losses.value_linear * C_maxes)
+        # Gradient via Danskin's theorem:
+        # d/da sum_k w_k * OT_eps(a, b_k; C_k) = sum_k w_k * f*_k
+        # where f*_k = results.potentials[0][k] is the Sinkhorn dual potential for the a-marginal.
+        # Rescale by C_maxes to undo the cost normalization.
+        f_batch, _ = results.potentials  # shape (K, n)
 
-        # Compute full loss barycenter (by solving K OT problems)
-        # loss = torch.zeros(1, device=device)
+        # f_batch = torch.as_tensor(f_batch, device=device, dtype=dtype)
+        barycenter_grad = torch.einsum('k,kn,k->n', weights_barycenter, f_batch, C_maxes)
 
-        # for k in range(n_distr):
-        #     C = C_list[k]
-        #     b = weights_samples[k]
-
-        #     if mode == "emd":
-        #         loss += weights_barycenter[k] * ot.emd2(barycenter, b, C)
-        #     elif mode == "sinkhorn":
-        #         loss += weights_barycenter[k] * ot.sinkhorn2(barycenter, b, C/C.max(), reg) * C.max()
-
-        barycenter_grad = torch.autograd.grad(loss, barycenter)[0]
+        loss = torch.sum(weights_barycenter * results.value_linear * C_maxes)
         grad_u = barycenter_grad - barycenter_grad.mean()
-    
+
         # Mirror descent step
         bartilde = bartilde * torch.exp(-lr_bar * beta * grad_u)
         bartilde = bartilde / torch.sum(bartilde)
 
-        # final Nesterov update
+        # Nesterov update
         barhat = (1-1./beta) * barhat + bartilde / beta
         tab_loss.append(loss.item())
 
@@ -194,9 +188,6 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
 
     if log:
         dico_log = {"loss": tab_loss}
-        return barycenter.detach(), dico_log
+        return barhat.detach(), dico_log
 
-    # plt.plot(tab_loss)
-    # plt.show()
-    
-    return barycenter.detach()
+    return barhat.detach()
