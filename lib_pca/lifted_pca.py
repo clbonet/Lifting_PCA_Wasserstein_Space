@@ -219,6 +219,16 @@ class LiftedPCA():
 
 
     def cost_barycenter(self, samples_data, weights_data=None):
+        """
+            Compute the cost of the barycenter with respect to the given samples.
+
+            Parameters
+            ----------
+            samples_data :  (list of array-like) 
+                List of K arrays of measure positions, each of shape (m_k, d_k).
+            weights_data : (list of array-like) (optional, default uniform)
+                List of K arrays of measure weights, each of shape (m_k,).
+        """
         n_distr = len(samples_data)
         device = samples_data[0].device
 
@@ -233,7 +243,7 @@ class LiftedPCA():
         if weight_bary is None:
             weight_bary = torch.ones(support_bary.shape[0], device=device) / support_bary.shape[0]
 
-        L_ot_costs = np.zeros(n_distr)
+        L_ot_costs = torch.zeros(n_distr, device=device)
         for k in range(n_distr):
             C = cost_pca(support_bary, samples_data[k])
             b = weights_data[k]
@@ -243,7 +253,7 @@ class LiftedPCA():
             # print(k, L_ot_costs[k], ot.sinkhorn2(weight_bary, b, C/C.max(), 0.01) * C.max())
             # L_ot_costs[k] = ot.sinkhorn2(weight_bary, b, C/C.max(), 1) * C.max()
 
-        return np.mean(L_ot_costs)
+        return torch.mean(L_ot_costs)
 
 
     def get_barycenter_components(self):

@@ -6,7 +6,7 @@ import numpy as np
 from .utils_barycenters import cost_pca
 
 
-class DistributionalPCA():
+class UAPCA():
     """
         Distributional PCA (also called Uncertainty-Aware PCA) as proposed in [1, 2]. It amounts at taking the SVD of S=sum_i (m_i m_i^T + Sigma_i) - Bar(m)Bar(m)^T.
 
@@ -29,6 +29,7 @@ class DistributionalPCA():
         # Mean to center full distributions (to be equivalent with PCA)
         center_means = torch.mean(data_means, axis=0, keepdims=True)
         data_means = data_means - center_means
+        self.mean_ = center_means
 
         means_transformed = torch.einsum("ni, nj -> nij", data_means, data_means) # Shape (n, d, d)
         solution_matrix = torch.mean(means_transformed + data_covs, axis=0)
@@ -64,6 +65,8 @@ class DistributionalPCA():
 
     def cost_barycenter(self, samples_data, weights_data=None):
         n_distr = len(samples_data)
+
+        samples_data = samples_data - self.mean_
 
         support_bary = self.components_[:,:,None]
 

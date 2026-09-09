@@ -89,6 +89,7 @@ def cost_pca(U, x):
     Ux = torch.einsum('ndk, md -> nmk', U, x)      # (n, m, k)  -- U^T x per n
     proj_norm2 = torch.sum(Ux**2, dim=-1)          # (n, m)
     C = x_norm2[None, :] - proj_norm2              # Using that |x-UU^Tx|^2 = |x|^2 - |U^Tx|^2
+
     return C
 
 
