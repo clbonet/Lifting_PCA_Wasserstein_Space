@@ -1,14 +1,12 @@
-import ot
 import torch
 
-import numpy as np
-
-from .utils_barycenters import cost_pca
+from .utils_barycenters import cost_barycenter
+from .utils_data import pad_and_group_by_class
 
 
 class UAPCA():
     """
-        Distributional PCA (also called Uncertainty-Aware PCA) as proposed in [1, 2]. It amounts at taking the SVD of S=sum_i (m_i m_i^T + Sigma_i) - Bar(m)Bar(m)^T.
+        Uncertainty-Aware PCA (also called Distributional PCA in [1]) as proposed in [1, 2]. It amounts at taking the SVD of S=sum_i (m_i m_i^T + Sigma_i) - Bar(m)Bar(m)^T.
 
         [1] Niculae, V. (2023). Two derivations of Principal Component Analysis on datasets of distributions. arXiv preprint arXiv:2306.13503.
 
@@ -16,6 +14,7 @@ class UAPCA():
     """
     def __init__(self, n_components=1):
         self.n_components = n_components
+
 
     def fit(self, data_means, data_covs):
         """
@@ -39,9 +38,26 @@ class UAPCA():
 
         eigenvals_sorted, inds_sort = torch.sort(eigenvals, descending=True) 
         self.explained_variance_ratio_ = eigenvals_sorted[:self.n_components] / torch.sum(eigenvals_sorted)
-        self.components_ = eigenvecs[:, inds_sort[:self.n_components]].T
+        self.components_ = eigenvecs[:, inds_sort[:self.n_components]] # Shape (d, n_components)
 
-    def fit_from_samples(self, X, y):
+
+
+    def fit_from_samples(self, X_list):
+        """ 
+            Fit from samples by first approximating the means and covariance matrices.
+
+            Parameters
+            ----------
+            X_list : list of torch tensors of shape (n_k, d)
+                List of K tensors of n_k data points
+        """
+        means_X = torch.stack([torch.mean(X, axis=0) for X in X_list], axis=0)
+        covs_X = torch.stack([torch.cov(X.T) for X in X_list], axis=0)
+
+        self.fit(means_X, covs_X)
+
+
+    def fit_from_samples_labels(self, X, y):
         """ 
             Fit from samples by first approximating the means and covariance matrices.
 
@@ -61,59 +77,10 @@ class UAPCA():
             "lnd, lnk -> ldk", X_weights_class[:, :, None] * Cs, Cs
         )
 
+
         self.fit(means_X, covs_X)
 
+
     def cost_barycenter(self, samples_data, weights_data=None):
-        n_distr = len(samples_data)
-
-        samples_data = samples_data - self.mean_
-
-        support_bary = self.components_[:,:,None]
-
-        if weights_data is None:
-            weights_data = [torch.ones(m.shape[0]) / m.shape[0] for m in samples_data]  # weights each measure
-
-        L_ot_costs = np.zeros(n_distr)
-        for k in range(n_distr):
-            C = cost_pca(support_bary, samples_data[k])
-            b = weights_data[k]
-            L_ot_costs[k] = ot.emd2(torch.tensor([1.]), b, C)
-
-        return np.mean(L_ot_costs)
-
-
-def pad_and_group_by_class(x, labels):
-    """
-    Args:
-        x: Tensor of shape (n, d)
-        labels: LongTensor of shape (n,), values in 0..C-1
-
-    Returns:
-        out: Tensor of shape (C, nc, d), with padded zeros
-        weights_by_class: Tensor of shape (C, nc), with padded zeros or uniform weights
-        weights_by_samples: Tensor of shape (C, nc), with padded zeroes or uniform weights
-    """
-    n, d = x.shape
-    device = x.device
-    dtype = x.dtype
-
-    # Compute number of classes (C) and max samples per class (nc)
-    C = int(labels.max().item()) + 1
-    class_counts = torch.bincount(labels.type(torch.int), minlength=C)
-    nc = class_counts.max().item()
-
-    # Initialize output tensors
-    out = torch.zeros(C, nc, d, device=device, dtype=dtype)
-    weights_by_class = torch.zeros(C, nc, device=device, dtype=dtype)  # weights matrix, uniform by class
-    weights_by_samples = torch.zeros(C, nc, device=device, dtype=dtype)  # weights matrix, uniform on the full set of samples
-
-    for c in range(C):
-        class_mask = (labels == c)
-        class_x = x[class_mask]  # (num_samples_c, d)
-        num_samples = class_x.size(0)
-
-        out[c, :num_samples] = class_x
-        weights_by_class[c, :num_samples] = 1.0 / class_counts[c]
-        weights_by_samples[c, :num_samples] = 1.0 / len(labels)
-
-    return out, weights_by_class, weights_by_samples
+        support_bary = self.components_[None] # Dirac, hence shape (1, d, n_components)
+        return cost_barycenter(support_bary, samples_data, weights_data=weights_data, mean=self.mean_)

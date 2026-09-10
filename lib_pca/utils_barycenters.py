@@ -93,6 +93,77 @@ def cost_pca(U, x):
     return C
 
 
+def center_data(samples_data, mean=None):
+    """
+        Center the data for each sample.
+
+        Parameters
+        ----------
+        samples_data :  (list of array-like) 
+            List of K arrays of measure positions, each of shape (m_k, d_k).
+        mean: tensor of shape (1, d), optional (default None)
+            Mean of the samples, used for centering. If None, the mean is computed from the samples as frac1K sum_{k=1}^K m_k where m_k mean of the k-th distribution.
+
+        Outputs
+        -------
+        samples_data_centered :  (list of array-like)
+            List of K arrays of centered measure positions, each of shape (m_k, d_k).
+        mean_ : tensor of shape (1, d)
+            Mean of the samples, used for centering.
+    """
+    if mean is None:
+        means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
+        # samples_data_centered = samples_data - torch.mean(means, axis=0, keepdims=True)
+        mean_ = torch.mean(means, axis=0, keepdims=True)
+    else:
+        mean_ = mean
+
+    samples_data_centered = [samples_data[k] - mean_ for k in range(len(samples_data))]
+    return samples_data_centered, mean_
+
+
+def cost_barycenter(samples_U, samples_data, weights_U=None, weights_data=None, mean=None):
+    """
+        Compute the cost of the barycenter with respect to the given samples.
+
+        Parameters
+        ----------
+        samples_U : tensor of shape (n, d, n_components)
+            Tensor containing the distribution on the Stiefel manifold.
+        samples_data :  (list of array-like) 
+            List of K arrays of measure positions, each of shape (m_k, d).
+        weights_U : tensor of shape (n,), optional (default uniform)
+            Weights of the distributions on the Stiefel manifold.
+        weights_data : (list of array-like) (optional, default uniform)
+            List of K arrays of measure weights, each of shape (m_k,).
+        mean: tensor of shape (1, d), optional (default None)
+            Mean of the samples, used for centering. If None, the mean is computed from the samples as frac1K sum_{k=1}^K m_k where m_k mean of the k-th distribution.
+    """
+    n_distr = len(samples_data)
+    device = samples_data[0].device
+
+    samples_data, _ = center_data(samples_data, mean=mean)
+
+    support_bary = samples_U
+    weight_bary = weights_U
+
+    if weights_data is None:
+        weights_data = [torch.ones(m.shape[0], device=device) / m.shape[0] for m in samples_data]  # weights each measure
+
+    if weight_bary is None:
+        weight_bary = torch.ones(support_bary.shape[0], device=device) / support_bary.shape[0]
+
+    L_ot_costs = torch.zeros(n_distr, device=device)
+
+    for k in range(n_distr):
+        C = cost_pca(support_bary, samples_data[k])
+        b = weights_data[k]
+
+        L_ot_costs[k] = ot.emd2(weight_bary, b, C)
+
+    return torch.mean(L_ot_costs)
+
+
 def barycenter_fixed_support(support, samples, init_weights=None, weights_samples=None, weights_barycenter=None, n_iter=100, stopThr=1e-5,
                              lr_bar=1, mode="sinkhorn", reg=1, log=False):
     """
@@ -140,43 +211,55 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
 
     # Precompute once: support is fixed in this solver
     C_list = torch.cat([cost_pca(support, samples[k])[None] for k in range(n_distr)], dim=0) # shape (K, n, m)
-    C_maxes = torch.tensor([C_list[k].max() for k in range(n_distr)], device=device)
+    # C_maxes = torch.tensor([C_list[k].max() for k in range(n_distr)], device=device)
+    C_max = C_list.max()
 
     barycenter = torch.ones(n, device=device, dtype=dtype) / n if init_weights is None else init_weights.clone().detach()
+    # barycenter.requires_grad = True
 
     tab_loss = []
     barhat = barycenter.clone()
     bartilde = barycenter.clone()
 
+    log_bartilde = torch.log(bartilde)
+
     for i in range(n_iter):
-        # Nesterov Acceleration
-        beta = (i+1)/2
+        # Nesterov Acceleration — beta starts at 1 so (1-1/beta)*barhat + (1/beta)*bartilde
+        # is always a valid convex combination.
+        beta = (i+2)/2
         barycenter = (1-1./beta) * barhat + bartilde / beta
 
         # Solve K OT problems with Sinkhorn
         results = ot.batch.solve_batch(
-            C_list/C_maxes[:, None, None],
+            C_list/C_max,# C_maxes[:, None, None],
             reg=reg,
             a=barycenter,
             b=weights_samples,
             method=mode,
+            # grad="last_step"
         )
 
         # Gradient via Danskin's theorem:
         # d/da sum_k w_k * OT_eps(a, b_k; C_k) = sum_k w_k * f*_k
-        # where f*_k = results.potentials[0][k] is the Sinkhorn dual potential for the a-marginal.
-        # Rescale by C_maxes to undo the cost normalization.
-        f_batch, _ = results.potentials  # shape (K, n)
+        # where f*_k = log(u*_k) is the Sinkhorn dual potential for the a-marginal.
+        # results.potentials[0] returns the raw Sinkhorn scalings u/c (not log(u)), so
+        # we take the log to recover the true dual potential (up to an additive constant
+        # that cancels after centering onto the simplex tangent space).
+        f_batch, _ = results.potentials  # shape (K, n) — contains u/c, not log(u)
 
-        # f_batch = torch.as_tensor(f_batch, device=device, dtype=dtype)
-        barycenter_grad = torch.einsum('k,kn,k->n', weights_barycenter, f_batch, C_maxes)
+        # barycenter_grad = torch.einsum('k,kn,k->n', weights_barycenter, f_batch, C_maxes)
+        barycenter_grad = torch.einsum('k,kn->n', weights_barycenter, f_batch) * C_max
 
-        loss = torch.sum(weights_barycenter * results.value_linear * C_maxes)
+        # loss = torch.sum(weights_barycenter * results.value_linear * C_maxes)
+        loss = torch.sum(weights_barycenter * results.value_linear * C_max)
+
+        # barycenter_grad = torch.autograd.grad(loss, barycenter)[0]
         grad_u = barycenter_grad - barycenter_grad.mean()
 
-        # Mirror descent step
-        bartilde = bartilde * torch.exp(-lr_bar * beta * grad_u)
-        bartilde = bartilde / torch.sum(bartilde)
+        # Mirror descent in log-space to avoid overflow with large gradients.
+        log_bartilde = log_bartilde - lr_bar * beta * grad_u
+        log_bartilde = log_bartilde - torch.logsumexp(log_bartilde, dim=0)
+        bartilde = torch.exp(log_bartilde)
 
         # Nesterov update
         barhat = (1-1./beta) * barhat + bartilde / beta

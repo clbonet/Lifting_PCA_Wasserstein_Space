@@ -12,7 +12,8 @@ from geomstats.geometry.stiefel import Stiefel
 from geomstats.geometry.grassmannian import Grassmannian
 from geomstats.learning.frechet_mean import FrechetMean
 
-from .utils_barycenters import barycenter_fixed_support, get_ground_barycenter, cost_pca
+from .utils_barycenters import barycenter_fixed_support, get_ground_barycenter, cost_pca, center_data, cost_barycenter
+from .utils_data import get_list_by_class
 
 
 class LiftedPCA():
@@ -107,25 +108,9 @@ class LiftedPCA():
         self.components_ = support_bary
         self.weights_ = weight_bary
 
-
-    def center_data(self, samples_data, mean=None):
-        """
-            Center the data for each sample.
-
-            Parameters
-            ----------
-            samples_data :  (list of array-like) 
-                List of K arrays of measure positions, each of shape (m_k, d_k).
-        """
-        if mean is None:
-            means = torch.concatenate([torch.mean(data, axis=0)[None] for data in samples_data], axis=0)
-            # samples_data_centered = samples_data - torch.mean(means, axis=0, keepdims=True)
-            self.mean_ = torch.mean(means, axis=0, keepdims=True)
-        else:
-            self.mean_ = mean
-
-        samples_data_centered = [samples_data[k] - self.mean_ for k in range(len(samples_data))]
-        return samples_data_centered
+    def fit_from_labels(self, X, y, **args):
+        L_X = get_list_by_class(X, y)
+        self.fit(L_X, **args)
 
 
     def barycenter_fixed_weights(
@@ -218,6 +203,21 @@ class LiftedPCA():
         return weights
 
 
+    def center_data(self, samples_data, mean=None):
+        """
+            Center the data for each sample.
+
+            Parameters
+            ----------
+            samples_data :  (list of array-like) 
+                List of K arrays of measure positions, each of shape (m_k, d_k).
+        """
+        samples_data_centered, mean_ = center_data(samples_data, mean=mean)
+        self.mean_ = mean_
+
+        return samples_data_centered
+
+
     def cost_barycenter(self, samples_data, weights_data=None):
         """
             Compute the cost of the barycenter with respect to the given samples.
@@ -229,31 +229,7 @@ class LiftedPCA():
             weights_data : (list of array-like) (optional, default uniform)
                 List of K arrays of measure weights, each of shape (m_k,).
         """
-        n_distr = len(samples_data)
-        device = samples_data[0].device
-
-        samples_data = self.center_data(samples_data, mean=self.mean_)
-
-        support_bary = self.components_
-        weight_bary = self.weights_
-
-        if weights_data is None:
-            weights_data = [torch.ones(m.shape[0], device=device) / m.shape[0] for m in samples_data]  # weights each measure
-
-        if weight_bary is None:
-            weight_bary = torch.ones(support_bary.shape[0], device=device) / support_bary.shape[0]
-
-        L_ot_costs = torch.zeros(n_distr, device=device)
-        for k in range(n_distr):
-            C = cost_pca(support_bary, samples_data[k])
-            b = weights_data[k]
-
-            L_ot_costs[k] = ot.emd2(weight_bary, b, C)
-
-            # print(k, L_ot_costs[k], ot.sinkhorn2(weight_bary, b, C/C.max(), 0.01) * C.max())
-            # L_ot_costs[k] = ot.sinkhorn2(weight_bary, b, C/C.max(), 1) * C.max()
-
-        return torch.mean(L_ot_costs)
+        return cost_barycenter(self.components_, samples_data, self.weights_, weights_data, mean=self.mean_)
 
 
     def get_barycenter_components(self):
@@ -262,7 +238,6 @@ class LiftedPCA():
         """
         # stiefel = Stiefel(self.components_.shape[1], self.n_components)
         grassmann = Grassmannian(self.components_.shape[1], self.n_components)
-
 
         # Intrinsic Fréchet/Karcher mean
         # mean_estimator = FrechetMean(space=stiefel)
