@@ -138,3 +138,38 @@ def plot_samples_distributions(samples, colors=None, modulo_colors=1, ax=None, a
 
     for k in range(len(samples)):
         ax.scatter(samples[k][:,0], samples[k][:,1], c=colors[k//modulo_colors], alpha=alpha)
+
+
+def plot_eigenvectors_pca(eigenvectors, explained_variance_ratio, ax=None):
+    # eigenvectors = pca.components_
+    # explained_var = 0.5 + pca.explained_variance_ratio_    
+    explained_var = 0.5 + explained_variance_ratio
+
+    if ax is None:
+        ax = plt.gca()
+
+    # Plot first PC
+    ax.quiver(
+        0, 0,
+        explained_var[0]*eigenvectors[0][0], explained_var[0]*eigenvectors[0][1],
+        color="black", scale=3, label="PCA on one sample per distribution"
+    )
+
+    ax.quiver(
+        0, 0,
+        -explained_var[0]*eigenvectors[0][0], -explained_var[0]*eigenvectors[0][1],
+        color="black", scale=3, label="PCA on one sample per distribution"
+    )
+
+    # Plot second PC
+    ax.quiver(
+        0, 0,
+        explained_var[1]*eigenvectors[1][0], explained_var[1]*eigenvectors[1][1],
+        color="black", scale=3, label="PCA on one sample per distribution"
+    )
+
+    ax.quiver(
+        0, 0,
+        -explained_var[1]*eigenvectors[1][0], -explained_var[1]*eigenvectors[1][1],
+        color="black", scale=3, label="PCA on one sample per distribution"
+    )
