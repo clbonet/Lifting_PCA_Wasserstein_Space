@@ -1,6 +1,6 @@
 import torch
 
-from .utils_barycenters import cost_barycenter
+from .utils_barycenters import cost_barycenter, center_data
 from .utils_data import pad_and_group_by_class
 
 
@@ -84,3 +84,18 @@ class UAPCA():
     def cost_barycenter(self, samples_data, weights_data=None):
         support_bary = self.components_[None] # Dirac, hence shape (1, d, n_components)
         return cost_barycenter(support_bary, samples_data, weights_data=weights_data, mean=self.mean_)
+
+
+    def center_data(self, samples_data, mean=None):
+        """
+            Center the data for each sample.
+
+            Parameters
+            ----------
+            samples_data :  (list of array-like) 
+                List of K arrays of measure positions, each of shape (m_k, d_k).
+        """
+        samples_data_centered, mean_ = center_data(samples_data, mean=mean)
+        self.mean_ = mean_
+
+        return samples_data_centered
