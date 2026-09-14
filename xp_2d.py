@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.decomposition import PCA
 
-from lib_pca.utils_plot import plot_samples_distributions, plot_eigenvectors_pca, draw_kde_circle, draw_confidence_interval
+from lib_pca.utils_plot import plot_samples_distributions, plot_eigenvectors_pca, draw_kde_circle, draw_confidence_interval, plot_barycenter
 from lib_pca.uncertainty_aware_pca import UAPCA
 from lib_pca.lifted_pca import LiftedPCA
 
@@ -56,7 +56,7 @@ def get_plot_uapca(samples, ax=None, xmin=-3, xmax=3, ymin=-3, ymax=3, colors=No
 
 
 def get_plot_lifted_pca(samples, ax=None, xmin=-3, xmax=3, ymin=-3, ymax=3, colors=None,
-                        plot_ci=True, plot_circle=True, plot_samples=True,
+                        plot_ci=True, plot_circle=True, plot_samples=True, plot_bary=False,
                         title="Lifted PCA", value_barycenter=False):
     lifted_pca = LiftedPCA(n_components=1, n_samples=50)
     lifted_pca.fit(samples, solver="fixed_weights")
@@ -75,6 +75,9 @@ def get_plot_lifted_pca(samples, ax=None, xmin=-3, xmax=3, ymin=-3, ymax=3, colo
 
     if plot_ci:
         draw_confidence_interval(lifted_pca.components_, barycenter=lifted_pca.get_barycenter_components()[:, 0], ax=ax, ci=95)
+
+    if plot_bary:
+        plot_barycenter(lifted_pca.get_barycenter_components()[:, 0], ax=ax)
 
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)

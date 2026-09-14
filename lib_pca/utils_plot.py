@@ -140,6 +140,22 @@ def draw_kde_circle(directions, ax=None, color_kde="darkorange", kappa=100):
     # ax.set_aspect("equal")
 
 
+def plot_barycenter(barycenter, ax=None, color_ci="darkorange"):
+    if ax is None:
+        ax = plt.gca()
+
+    ts = torch.linspace(-10, 10, 100)
+    barycenter = ts[:, None] * barycenter[None]
+    ax.plot(
+        barycenter[:, 0],
+        barycenter[:, 1],
+        linewidth=3.5,
+        linestyle=":",
+        color=color_ci,
+        label="Barycenter direction",
+    )
+
+
 def draw_confidence_interval(directions, barycenter, ax=None, color_ci="darkorange", ci=95, kappa=100):
     if len(directions.shape) == 3:
         directions = directions.squeeze(-1)
