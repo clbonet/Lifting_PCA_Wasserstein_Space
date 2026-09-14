@@ -204,24 +204,24 @@ def plot_eigenvectors_pca(eigenvectors, explained_variance_ratio, ax=None):
     ax.quiver(
         0, 0,
         explained_var[0]*eigenvectors[0][0], explained_var[0]*eigenvectors[0][1],
-        color="black", scale=3, label="PCA on one sample per distribution"
+        color="black", scale=3, label="PCA on one sample per distribution", zorder=10
     )
 
     ax.quiver(
         0, 0,
         -explained_var[0]*eigenvectors[0][0], -explained_var[0]*eigenvectors[0][1],
-        color="black", scale=3, label="PCA on one sample per distribution"
+        color="black", scale=3, label="PCA on one sample per distribution", zorder=10
     )
 
     # Plot second PC
     ax.quiver(
         0, 0,
         explained_var[1]*eigenvectors[1][0], explained_var[1]*eigenvectors[1][1],
-        color="black", scale=3, label="PCA on one sample per distribution"
+        color="black", scale=3, label="PCA on one sample per distribution", zorder=10
     )
 
     ax.quiver(
         0, 0,
         -explained_var[1]*eigenvectors[1][0], -explained_var[1]*eigenvectors[1][1],
-        color="black", scale=3, label="PCA on one sample per distribution"
+        color="black", scale=3, label="PCA on one sample per distribution", zorder=10
     )
