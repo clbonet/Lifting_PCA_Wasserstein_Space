@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from matplotlib.patches import Ellipse
+from scipy.stats import gaussian_kde
 
 from .utils_kde import kde_circle
 
@@ -220,3 +221,60 @@ def plot_eigenvectors_pca(eigenvectors, explained_variance_ratio, ax=None):
         -explained_var[1]*eigenvectors[1][0], -explained_var[1]*eigenvectors[1][1],
         color="black", scale=3, label="PCA on one sample per distribution", zorder=10
     )
+
+
+def plot_gaussian_kde(samples, bandwidth=0.3, ax=None, color=None, xmin=-3, xmax=3, ymin=-3, ymax=3):
+    """
+        Gaussian KDE.
+
+        Parameters
+        ----------
+        samples: tensor of shape (n, d)
+    """
+    if ax is None:
+        ax = plt.gca()
+
+    x_grid = torch.linspace(xmin, xmax, 100)
+    y_grid = torch.linspace(ymin, ymax, 100)
+    grid_x, grid_y = torch.meshgrid(x_grid, y_grid, indexing="xy")
+    grid = torch.stack([grid_x.reshape(-1), grid_y.reshape(-1)])
+
+    kde = gaussian_kde(samples.T, bw_method=bandwidth)
+    density = kde(grid.detach().cpu().numpy()).reshape(grid_x.shape)
+    levels = density.max() * np.linspace(0.2, 0.9, 5)
+
+    ax.contour(
+        grid_x,
+        grid_y,
+        density,
+        levels=levels,
+        colors=[color],
+        linewidths=1.2,
+        alpha=0.9,
+    )
+
+
+def plot_gaussian_kde_1d(values, ax=None, n_grid=300, bw_method=None, color=None, label=None):
+    values = np.asarray(values).reshape(-1)
+
+    if values.size < 2:
+        raise ValueError("values must contain at least two observations")
+
+    if ax is None:
+        _, ax = plt.subplots()
+
+    kde = gaussian_kde(values, bw_method=bw_method)
+
+    value_range = values.max() - values.min()
+    margin = 0.1 * value_range if value_range > 0 else 1.0
+
+    grid = np.linspace(values.min() - margin, values.max() + margin, n_grid)
+    density = kde(grid)
+
+    ax.plot(grid, density, color=color, linewidth=2, label=label)
+    ax.fill_between(grid, density, color=color, alpha=0.2)
+    ax.set_xlabel("First PCA coordinate")
+    ax.set_ylabel("Density")
+
+    if label is not None:
+        ax.legend()

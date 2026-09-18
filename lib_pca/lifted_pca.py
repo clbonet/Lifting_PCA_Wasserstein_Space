@@ -251,3 +251,18 @@ class LiftedPCA():
         eigenvalues, eigenvectors = torch.linalg.eigh(P)
 
         return eigenvectors[:, -self.n_components:]
+
+
+    def project_samples(self, samples):
+        """
+            Project samples on all directions
+
+            Parameters
+            ----------
+            samples : torch tensor of shape (m, d)
+        """
+        # Map to projector (on the Grassmann manifold)
+        projectors = torch.einsum("ndq, npq -> ndp", self.components_, self.components_)
+        projected_samples = torch.einsum("ndp,mp->nmd", projectors, samples)
+
+        return projected_samples

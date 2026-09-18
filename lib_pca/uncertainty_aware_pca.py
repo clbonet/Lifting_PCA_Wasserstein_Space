@@ -99,3 +99,8 @@ class UAPCA():
         self.mean_ = mean_
 
         return samples_data_centered
+
+
+    def transform(self, samples):
+        projected_samples = torch.einsum("dq, nd -> nq", self.components_, samples)
+        return projected_samples
