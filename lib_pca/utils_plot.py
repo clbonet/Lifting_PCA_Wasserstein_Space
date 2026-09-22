@@ -223,7 +223,7 @@ def plot_eigenvectors_pca(eigenvectors, explained_variance_ratio, ax=None):
     )
 
 
-def plot_gaussian_kde(samples, bandwidth=0.3, ax=None, color=None, xmin=-3, xmax=3, ymin=-3, ymax=3):
+def plot_gaussian_kde(samples, bandwidth=0.3, ax=None, color=None, xmin=-3, xmax=3, ymin=-3, ymax=3, label=None):
     """
         Gaussian KDE.
 
@@ -250,7 +250,7 @@ def plot_gaussian_kde(samples, bandwidth=0.3, ax=None, color=None, xmin=-3, xmax
         levels=levels,
         colors=[color],
         linewidths=1.2,
-        alpha=0.9,
+        alpha=0.9
     )
 
 

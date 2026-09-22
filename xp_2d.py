@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 
 from sklearn.decomposition import PCA
 
-from lib_pca.utils_plot import plot_samples_distributions, plot_eigenvectors_pca, draw_kde_circle, draw_confidence_interval, plot_barycenter
+from lib_pca.utils_plot import plot_samples_distributions, plot_eigenvectors_pca, draw_kde_circle, draw_confidence_interval, plot_barycenter, plot_gaussian_kde
 from lib_pca.uncertainty_aware_pca import UAPCA
 from lib_pca.lifted_pca import LiftedPCA
 
@@ -81,7 +81,7 @@ def get_plot_true_uapca(samples, means, covariances, ax=None, xmin=-3, xmax=3, y
 
 
 def get_plot_lifted_pca(samples, ax=None, xmin=-3, xmax=3, ymin=-3, ymax=3, colors=None,
-                        plot_ci=True, plot_circle=True, plot_samples=True, plot_bary=False,
+                        plot_ci=True, plot_circle=True, plot_samples=True, plot_bary=False, plot_kde_projs=False,
                         title="Lifted PCA", value_barycenter=False, n_samples=500):
     lifted_pca = LiftedPCA(n_components=1, n_samples=n_samples)
     lifted_pca.fit(samples, solver="fixed_weights")
@@ -103,6 +103,12 @@ def get_plot_lifted_pca(samples, ax=None, xmin=-3, xmax=3, ymin=-3, ymax=3, colo
 
     if plot_bary:
         plot_barycenter(lifted_pca.get_barycenter_components()[:, 0], ax=ax)
+
+    if plot_kde_projs:
+        centered_samples = lifted_pca.center_data(samples)
+        for k in range(len(samples)):
+            plot_gaussian_kde(lifted_pca.project_samples(centered_samples[k]).reshape(-1, 2), color=colors[k], ax=ax)
+
 
     ax.set_xlim(xmin, xmax)
     ax.set_ylim(ymin, ymax)
