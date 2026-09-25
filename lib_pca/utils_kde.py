@@ -3,6 +3,8 @@ import numpy as np
 
 from scipy.special import i0
 
+from geomstats.geometry.grassmannian import Grassmannian
+
 
 def kde_circle(circle_points, directions, kappa=100):
     """
@@ -50,11 +52,16 @@ def projection_metric(U, V):
         torch.Tensor, shape (n, m)
             Pairwise squared projection distances.
     """
+    d, q = U.shape[-2], U.shape[-1]
+    grassmann = Grassmannian(d, q)
+
 
     lift_U = torch.einsum("...dq, ...pq ->...dp", U, U)
     lift_V = torch.einsum("...dq, ...pq ->...dp", V, V)
 
-    dist = torch.sum(torch.square(lift_U[:,None]-lift_V[None]), dim=(-2, -1)) / 2
+    dist = grassmann.metric.squared_dist(lift_U[:,None], lift_V[None]) / 2
+
+    # dist = torch.sum(torch.square(lift_U[:,None]-lift_V[None]), dim=(-2, -1)) / 2
 
     return dist
 
