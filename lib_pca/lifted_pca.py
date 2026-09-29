@@ -104,6 +104,8 @@ class LiftedPCA():
                 weight_bary = self.barycenter_fixed_support(
                     samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg, mode
                     )
+        else:
+            raise ValueError("Unknown solver '%s'." % solver)
 
         self.components_ = support_bary
         self.weights_ = weight_bary
