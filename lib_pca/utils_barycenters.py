@@ -4,6 +4,8 @@ import ot
 import matplotlib.pyplot as plt
 
 # from sklearn.decomposition import PCA
+from geomstats.geometry.stiefel import Stiefel
+from geomstats.geometry.grassmannian import Grassmannian
 
 
 def get_ground_barycenter(n_components):
@@ -122,7 +124,7 @@ def center_data(samples_data, mean=None):
     return samples_data_centered, mean_
 
 
-def cost_barycenter(samples_U, samples_data, weights_U=None, weights_data=None, mean=None):
+def cost_barycenter(samples_U, samples_data, weights_U=None, weights_data=None, weights_distrs=None, mean=None):
     """
         Compute the cost of the barycenter with respect to the given samples.
 
@@ -136,6 +138,8 @@ def cost_barycenter(samples_U, samples_data, weights_U=None, weights_data=None, 
             Weights of the distributions on the Stiefel manifold.
         weights_data : (list of array-like) (optional, default uniform)
             List of K arrays of measure weights, each of shape (m_k,).
+        weights_distrs : tensor of shape (K,), optional (default uniform)
+            Weights of the distributions.
         mean: tensor of shape (1, d), optional (default None)
             Mean of the samples, used for centering. If None, the mean is computed from the samples as frac1K sum_{k=1}^K m_k where m_k mean of the k-th distribution.
     """
@@ -153,6 +157,9 @@ def cost_barycenter(samples_U, samples_data, weights_U=None, weights_data=None, 
     if weight_bary is None:
         weight_bary = torch.ones(support_bary.shape[0], device=device) / support_bary.shape[0]
 
+    if weights_distrs is None:
+        weights_distrs = torch.ones(n_distr, device=device) / n_distr
+
     L_ot_costs = torch.zeros(n_distr, device=device)
 
     for k in range(n_distr):
@@ -161,28 +168,29 @@ def cost_barycenter(samples_U, samples_data, weights_U=None, weights_data=None, 
 
         L_ot_costs[k] = ot.emd2(weight_bary, b, C)
 
-    return torch.mean(L_ot_costs)
+    return torch.sum(L_ot_costs * weights_distrs)
 
 
-def barycenter_fixed_support(support, samples, init_weights=None, weights_samples=None, weights_barycenter=None, n_iter=100, stopThr=1e-5,
+def barycenter_fixed_support(support, samples, init_weights=None, weights_samples=None,
+                             weights_barycenter=None, n_iter=100, stopThr=1e-5,
                              lr_bar=1, mode="sinkhorn", reg=1, log=False):
     """
         Compute barycenter optimizing over weights with fixed support by accelerated mirror descent, as in [1].
 
         [1] Cuturi, M., & Doucet, A. (2014). Fast computation of Wasserstein barycenters. In International conference on machine learning (pp. 685-693). PMLR.
     
-        Parameters
+        Parameters  
         ----------
         support : tensor of shape (n, d, n_components) with n the length of the support on the Stiefel manifold
             Support of the barycenter (distribution on the Stiefel manifold)
         samples :  (list of array-like) 
             List of K arrays of measure positions, each of shape (m_k, d_k).
-        init_weights : tensor of shape (K,), optional (default uniform)
+        init_weights : tensor of shape (n,), optional (default uniform)
             Initial weights of the barycenter measure?
         weights_samples : (list of array-like), optional (default uniform)
             List of K arrays of weights of shape (m_k,)
         weights_barycenter : tensor of shape (K,), optional (default uniform)
-            Weights of ieach term of the barycenter
+            Weights of each term of the barycenter
         n_iter : int, optional (default 100)
             Maximum number of iterations of Mirror descent
         stopThr : float, optional (default 1e-5)

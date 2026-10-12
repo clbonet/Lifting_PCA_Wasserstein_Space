@@ -22,7 +22,7 @@ class LiftedPCA():
         self.n_samples = n_samples
 
 
-    def fit(self, samples_data, support_bary=None, weights_data=None, weight_bary=None, solver="fixed_weights",
+    def fit(self, samples_data, support_bary=None, weights_data=None, weights_distrs=None, weight_bary=None, solver="fixed_weights",
             fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=500, lr_bary=1, reg=1, stop_threshold_fixed_support=1e-20,
             n_iter_alternate=10, seed=None, mode="sinkhorn"):
         """
@@ -47,6 +47,8 @@ class LiftedPCA():
                 Initial guess for the barycenter positions, of shape (n_samples, d, n_components). If None, will be initialized randomly.
             weights_data : (list of array-like) (optional, default uniform)
                 List of K arrays of measure weights, each of shape (m_k,).
+            weights_distrs : tensor of shape (K,), optional (default uniform)
+                Weights of the distributions.
             weight_bary : tensor of shape (n_samples,) (optional, default uniform)
                 Weight of the barycenter (the optimized measure)
             solver : str, optional (default "fixed_weights")
@@ -88,22 +90,30 @@ class LiftedPCA():
         if weights_data is None:
             weights_data = [torch.ones(m.shape[0], device=device) / m.shape[0] for m in samples_data]  # weights each measure
 
+        if weights_distrs is None:
+            weights_distrs = torch.ones(len(samples_data), device=device) / len(samples_data)  # weights each distribution
+
         if solver == "fixed_support":
             weight_bary = self.barycenter_fixed_support(
-                samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg, mode
-                )
+                support_bary, samples_data, init_weights=weight_bary,
+                weights_samples=weights_data, weights_distrs=weights_distrs,
+                n_iter_bary=n_iter_bary, stop_threshold_fixed_support=stop_threshold_fixed_support,
+                lr_bary=lr_bary, reg=reg, mode=mode
+            )
         elif solver == "fixed_weights":
             support_bary = self.barycenter_fixed_weights(
-                samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold
-                )
+                samples_data, support_bary, weights_data, weight_bary, weights_distrs, fixed_point_its, stop_threshold
+            )
         elif solver == "free":
             for i in range(n_iter_alternate):
                 support_bary = self.barycenter_fixed_weights(
-                    samples_data, support_bary, weights_data, weight_bary, fixed_point_its, stop_threshold
-                    )
+                    samples_data, support_bary, weights_data, weight_bary, weights_distrs, fixed_point_its, stop_threshold
+                )
                 weight_bary = self.barycenter_fixed_support(
-                    samples_data, support_bary, weights_data, weight_bary, n_iter_bary, stop_threshold_fixed_support, lr_bary, reg, mode
-                    )
+                    support_bary, samples_data, init_weights=weight_bary,
+                    weights_samples=weights_data, weights_distrs=weights_distrs,
+                    n_iter_bary=n_iter_bary, stop_threshold_fixed_support=stop_threshold_fixed_support,
+                    lr_bary=lr_bary, reg=reg, mode=mode                )
         else:
             raise ValueError("Unknown solver '%s'." % solver)
 
@@ -116,7 +126,8 @@ class LiftedPCA():
 
 
     def barycenter_fixed_weights(
-            self, samples_data, support_bary, weights_data=None, weight_bary=None, fixed_point_its = 5, stop_threshold = 1e-20, log=False
+            self, samples_data, support_bary, weights_data=None, weight_bary=None, weights_distrs=None,
+            fixed_point_its = 5, stop_threshold = 1e-20, log=False
             ):
         """
             Optimize the lifted PCA barycenter over the support of the barycenter, fixing the weights. For this, we use the fixed point algorithm from [1], 
@@ -134,14 +145,18 @@ class LiftedPCA():
                 List of K arrays of measure weights, each of shape (m_k,).
             weight_bary : tensor of shape (n_samples,) (optional, default uniform)
                 Weight of the barycenter (the optimized measure)
+            weights_distrs : tensor of shape (K,), optional (default uniform)
+                Weights of the distributions.
             fixed_point_its : int
                 Number of iterations for the fixed point algorithm.
             stop_threshold : float
                 Threshold for stopping the fixed point algorithm.
         """
+        if weights_distrs is None:
+            weights_distrs = torch.ones(len(samples_data), device=samples_data[0].device) / len(samples_data)  # weights each distribution
 
         B = get_ground_barycenter(self.n_components)
-        cost_list = [cost_pca for k in range(len(samples_data))]
+        cost_list = [lambda U, x: cost_pca(U, x) * weights_distrs[k] for k in range(len(samples_data))]
 
         X_bary, log_dict = ot.lp.free_support_barycenter_generic_costs(
             samples_data,
@@ -220,7 +235,7 @@ class LiftedPCA():
         return samples_data_centered
 
 
-    def cost_barycenter(self, samples_data, weights_data=None):
+    def cost_barycenter(self, samples_data, weights_data=None, weights_distrs=None):
         """
             Compute the cost of the barycenter with respect to the given samples.
 
@@ -230,8 +245,10 @@ class LiftedPCA():
                 List of K arrays of measure positions, each of shape (m_k, d_k).
             weights_data : (list of array-like) (optional, default uniform)
                 List of K arrays of measure weights, each of shape (m_k,).
+            weights_distrs : tensor of shape (K,), optional (default uniform)
+                Weights of the distributions.
         """
-        return cost_barycenter(self.components_, samples_data, self.weights_, weights_data, mean=self.mean_)
+        return cost_barycenter(self.components_, samples_data, self.weights_, weights_data, weights_distrs, mean=self.mean_)
 
 
     def get_barycenter_components(self):
