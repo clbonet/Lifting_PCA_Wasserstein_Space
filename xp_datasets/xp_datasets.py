@@ -17,7 +17,7 @@ from lib_pca.lifted_pca import LiftedPCA
 from lib_pca.utils_kde import kde_stiefel
 
 
-def plot_projections(X, basis, labels, names, ax=None, title=None, title_color="black", colors=None, fontsize=13):
+def plot_projections(X, basis, labels, names, ax=None, title=None, title_color="black", colors=None, fontsize=13, s=24):
     """
     """
     basis = basis.to(dtype=X.dtype, device=X.device)
@@ -30,7 +30,7 @@ def plot_projections(X, basis, labels, names, ax=None, title=None, title_color="
         ax.scatter(
             projected_points[class_mask, 0],
             projected_points[class_mask, 1],
-            s=24,
+            s=s,
             alpha=0.75,
             color=colors[class_idx] if colors is not None else None,
             label=names[class_idx],
@@ -129,7 +129,7 @@ def annotate_outlier(ax, point, marker_color="blue", label=None):
     )
 
 
-def get_plot_kde_grassmann(lifted_pca, pca=None, uapca=None, ax=None, title=None, get_outliers=False, fontsize=13):
+def get_plot_kde_grassmann(lifted_pca, pca=None, uapca=None, ax=None, title=None, fontsize=13):
     alpha, alpha_bary = get_weights_KDE(lifted_pca)
 
     pca_grassmann = PCA_Grassmann(lifted_pca)
@@ -148,21 +148,10 @@ def get_plot_kde_grassmann(lifted_pca, pca=None, uapca=None, ax=None, title=None
 
     plot_kde_grassmann(pca_grassmann, lifted_pca.get_barycenter_components()[None], alpha=None, ax=ax, marker="x", colorbar=False, color_marker="darkblue", label="Lifted barycenter")
 
-    if get_outliers:
-        tangent_projected_data = pca_grassmann.transform(lifted_pca.components_).detach().cpu().numpy()
-        low_candidates = np.argsort(alpha)[:max(2, int(np.ceil(0.2 * len(alpha))))]
-        left_low_idx = int(low_candidates[np.argmin(tangent_projected_data[low_candidates, 0])])
-        top_candidates = low_candidates[low_candidates != left_low_idx]
-        top_low_idx = int(top_candidates[np.argmax(tangent_projected_data[top_candidates, 1])])
-
-        annotate_outlier(ax, tangent_projected_data[left_low_idx], marker_color="royalblue", label="L")
-        annotate_outlier(ax, tangent_projected_data[top_low_idx], marker_color="seagreen", label="T")
-    
     ax.legend(frameon=False, fontsize=fontsize, loc="best")
     # ax.axis("off")
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_title(title,fontsize=fontsize)
 
-    if get_outliers:
-        return lifted_pca.components_[left_low_idx], lifted_pca.components_[top_low_idx], alpha[left_low_idx], alpha[top_low_idx], alpha_bary[0]
+    return pca_grassmann, alpha, alpha_bary
