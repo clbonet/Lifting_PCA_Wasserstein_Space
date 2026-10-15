@@ -1,12 +1,6 @@
 import torch
 import ot
 
-import matplotlib.pyplot as plt
-
-# from sklearn.decomposition import PCA
-from geomstats.geometry.stiefel import Stiefel
-from geomstats.geometry.grassmannian import Grassmannian
-
 
 def get_ground_barycenter(n_components):
     """
