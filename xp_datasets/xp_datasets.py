@@ -144,7 +144,7 @@ def get_plot_kde_grassmann(lifted_pca, pca=None, uapca=None, ax=None, title=None
         plot_kde_grassmann(pca_grassmann, pca.components_[None], alpha=None, ax=ax, marker="P", colorbar=False, color_marker="black", label="PCA")
 
     if uapca is not None:
-        plot_kde_grassmann(pca_grassmann, uapca.components_[None], alpha=None, ax=ax, marker="*", colorbar=False, color_marker="teal", label="UAPCA", xytext=(7, -7))
+        plot_kde_grassmann(pca_grassmann, uapca.components_[None], alpha=None, ax=ax, marker="*", colorbar=False, color_marker="teal", label="UAPCA")
 
     plot_kde_grassmann(pca_grassmann, lifted_pca.get_barycenter_components()[None], alpha=None, ax=ax, marker="x", colorbar=False, color_marker="darkblue", label="Lifted barycenter")
 

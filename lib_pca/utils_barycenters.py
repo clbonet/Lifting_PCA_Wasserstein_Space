@@ -1,6 +1,8 @@
 import torch
 import ot
 
+import matplotlib.pyplot as plt
+
 
 def get_ground_barycenter(n_components):
     """
@@ -167,7 +169,7 @@ def cost_barycenter(samples_U, samples_data, weights_U=None, weights_data=None, 
 
 def barycenter_fixed_support(support, samples, init_weights=None, weights_samples=None,
                              weights_barycenter=None, n_iter=100, stopThr=1e-5,
-                             lr_bar=1, mode="sinkhorn", reg=1, log=False):
+                             lr_bar=1, mode="log_sinkhorn", reg=1e-2, log=False):
     """
         Compute barycenter optimizing over weights with fixed support by accelerated mirror descent, as in [1].
 
@@ -191,13 +193,16 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
             Stopping threshold for the mirror descent
         lr_bar : int, optional (default 1)
             Learning rate for the mirror descent
-        mode : str, optional (default "sinkhorn")
-            Mode for the OT solver ("sinkhorn" or "proximal")
-        reg : float, optional (default 1)
+        mode : str, optional (default "log_sinkhorn")
+            Mode for the OT solver ("log_sinkhorn" or "sinkhorn")
+        reg : float, optional (default 1e-2)
             Regularization for the Sinkhorn solver
         log: boolean, optional (default False)
             If True, return the loss along iterations
     """
+    if mode not in ["log_sinkhorn", "sinkhorn"]:
+        raise ValueError("Unknown mode '%s', must be 'log_sinkhorn' or 'sinkhorn'." % mode)
+
     n, d, n_components = support.shape
     n_distr = len(samples)
     device = support.device
@@ -243,11 +248,13 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
 
         # Gradient via Danskin's theorem:
         # d/da sum_k w_k * OT_eps(a, b_k; C_k) = sum_k w_k * f*_k
-        # where f*_k = log(u*_k) is the Sinkhorn dual potential for the a-marginal.
-        # results.potentials[0] returns the raw Sinkhorn scalings u/c (not log(u)), so
-        # we take the log to recover the true dual potential (up to an additive constant
-        # that cancels after centering onto the simplex tangent space).
-        f_batch, _ = results.potentials  # shape (K, n) — contains u/c, not log(u)
+        # where f*_k = reg * log(u*_k) is the Sinkhorn dual potential for the a-marginal
+        # (up to an additive constant that cancels after centering onto the simplex tangent space).
+        # "log_sinkhorn" returns log(u) as potentials, while "sinkhorn" returns the raw scalings u.
+        log_u, _ = results.potentials  # shape (K, n)
+        if mode == "sinkhorn":
+            log_u = torch.log(log_u)
+        f_batch = reg * log_u
 
         # barycenter_grad = torch.einsum('k,kn,k->n', weights_barycenter, f_batch, C_maxes)
         barycenter_grad = torch.einsum('k,kn->n', weights_barycenter, f_batch) * C_max
@@ -274,5 +281,8 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
     if log:
         dico_log = {"loss": tab_loss}
         return barhat.detach(), dico_log
+
+    # plt.plot(tab_loss)
+    # plt.show()
 
     return barhat.detach()

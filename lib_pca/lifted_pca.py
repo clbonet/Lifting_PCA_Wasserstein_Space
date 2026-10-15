@@ -23,8 +23,8 @@ class LiftedPCA():
 
 
     def fit(self, samples_data, support_bary=None, weights_data=None, weights_distrs=None, weight_bary=None, solver="fixed_weights",
-            fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=500, lr_bary=1, reg=1, stop_threshold_fixed_support=1e-20,
-            n_iter_alternate=10, seed=None, mode="sinkhorn"):
+            fixed_point_its = 5, stop_threshold = 1e-20, n_iter_bary=500, lr_bary=1, reg=1e-2, stop_threshold_fixed_support=1e-20,
+            n_iter_alternate=10, seed=None, mode="log_sinkhorn"):
         """
             Fit the lifted PCA model to the given samples by computing the optimal barycenter.
             There are 3 possible solvers: 
@@ -61,7 +61,7 @@ class LiftedPCA():
                 Number of iterations of Mirror descent (for "fixed_support" or "free" solvers).
             lr_bary : int, optional (default 1)
                 Learning rate for the mirror descent (for "fixed_support" or "free" solvers).
-            reg : float, optional (default 1)
+            reg : float, optional (default 1e-2)
                 Regularization for the Sinkhorn solver (for "fixed_support" or "free" solvers).
             stop_threshold_fixed_support : float, optional (default 1e-4)
                 Threshold for stopping the Mirror Descent (for "fixed_support" solver).
@@ -69,8 +69,8 @@ class LiftedPCA():
                 Number of iterations for the alternate optimization (for "free" solver).
             seed : int, optional (default None)
                 Random seed for reproducibility.
-            mode: str, optional (default "sinkhorn")
-                Mode for the OT solver ("sinkhorn" or "proximal") (for "fixed support" solver)
+            mode: str, optional (default "log_sinkhorn")
+                Mode for the OT solver ("log_sinkhorn" or "sinkhorn") (for "fixed support" solver)
         """
         d = samples_data[0].shape[1]
         device = samples_data[0].device
@@ -179,7 +179,7 @@ class LiftedPCA():
 
 
     def barycenter_fixed_support(self, samples_data, support_bary=None, init_weights=None, weights_data=None, weights_distrs=None,
-                                 n_iter=100, stop_threshold=1e-5, lr_bary=1, reg=1, mode="sinkhorn", log=False):
+                                 n_iter=100, stop_threshold=1e-5, lr_bary=1, reg=1e-2, mode="log_sinkhorn", log=False):
         """
             Optimize the lifted PCA barycenter over the weights of the barycenter, fixing the support. For this, we use the accelerated mirror descent algorithm from [2].
 
@@ -203,10 +203,10 @@ class LiftedPCA():
                 Stopping threshold for the mirror descent
             lr_bary : int, optional (default 1)
                 Learning rate for the mirror descent
-            reg : float, optional (default 1)
+            reg : float, optional (default 1e-2)
                 Regularization for the Sinkhorn solver
-            mode: str, optional (default "sinkhorn")
-                Mode for the OT solver ("sinkhorn" or "proximal")
+            mode: str, optional (default "log_sinkhorn")
+                Mode for the OT solver ("log_sinkhorn" or "sinkhorn")
             log: boolean, optional (default False)
                 If True, return the loss along iterations
         """
