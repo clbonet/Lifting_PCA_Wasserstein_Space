@@ -186,7 +186,7 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
         samples :  (list of array-like) 
             List of K arrays of measure positions, each of shape (m_k, d_k).
         init_weights : tensor of shape (n,), optional (default uniform)
-            Initial weights of the barycenter measure?
+            Initial weights of the barycenter measure
         weights_samples : (list of array-like), optional (default uniform)
             List of K arrays of weights of shape (m_k,)
         weights_barycenter : tensor of shape (K,), optional (default uniform)

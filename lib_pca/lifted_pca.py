@@ -95,9 +95,9 @@ class LiftedPCA():
 
         if solver == "fixed_support":
             weight_bary = self.barycenter_fixed_support(
-                support_bary, samples_data, init_weights=weight_bary,
-                weights_samples=weights_data, weights_distrs=weights_distrs,
-                n_iter_bary=n_iter_bary, stop_threshold_fixed_support=stop_threshold_fixed_support,
+                samples_data, support_bary, init_weights=weight_bary,
+                weights_data=weights_data, weights_distrs=weights_distrs,
+                n_iter=n_iter_bary, stop_threshold=stop_threshold_fixed_support,
                 lr_bary=lr_bary, reg=reg, mode=mode
             )
         elif solver == "fixed_weights":
@@ -110,10 +110,11 @@ class LiftedPCA():
                     samples_data, support_bary, weights_data, weight_bary, weights_distrs, fixed_point_its, stop_threshold
                 )
                 weight_bary = self.barycenter_fixed_support(
-                    support_bary, samples_data, init_weights=weight_bary,
-                    weights_samples=weights_data, weights_distrs=weights_distrs,
-                    n_iter_bary=n_iter_bary, stop_threshold_fixed_support=stop_threshold_fixed_support,
-                    lr_bary=lr_bary, reg=reg, mode=mode                )
+                    samples_data, support_bary, init_weights=weight_bary,
+                    weights_data=weights_data, weights_distrs=weights_distrs,
+                    n_iter=n_iter_bary, stop_threshold=stop_threshold_fixed_support,
+                    lr_bary=lr_bary, reg=reg, mode=mode
+                )
         else:
             raise ValueError("Unknown solver '%s'." % solver)
 
@@ -177,7 +178,7 @@ class LiftedPCA():
 
 
 
-    def barycenter_fixed_support(self, samples_data, support_bary=None, weights_data=None, weight_bary=None,
+    def barycenter_fixed_support(self, samples_data, support_bary=None, init_weights=None, weights_data=None, weights_distrs=None,
                                  n_iter=100, stop_threshold=1e-5, lr_bary=1, reg=1, mode="sinkhorn", log=False):
         """
             Optimize the lifted PCA barycenter over the weights of the barycenter, fixing the support. For this, we use the accelerated mirror descent algorithm from [2].
@@ -190,10 +191,12 @@ class LiftedPCA():
                 List of K arrays of measure positions, each of shape (m_k, d_k).
             support_bary : array-like
                 Initial guess for the barycenter positions, of shape (n_samples, d, n_components). If None, will be initialized randomly.
+            init_weights : tensor of shape (n_samples,) (optional, default uniform)
+                Initial weights of the barycenter (the optimized measure)
             weights_data : (list of array-like) (optional, default uniform)
                 List of K arrays of measure weights, each of shape (m_k,).
-            weight_bary : tensor of shape (n_samples,) (optional, default uniform)
-                Weight of the barycenter (the optimized measure)
+            weights_distrs : tensor of shape (K,), optional (default uniform)
+                Weights of the distributions.
             n_iter : int, optional (default 100)
                 Maximum number of iterations of Mirror descent
             stop_threshold : float, optional (default 1e-5)
@@ -208,11 +211,15 @@ class LiftedPCA():
                 If True, return the loss along iterations
         """
         if log:
-            weights, log_dict = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data,
-                                                         lr_bar=lr_bary, stopThr=stop_threshold, mode=mode, reg=reg, n_iter=n_iter, log=log)
+            weights, log_dict = barycenter_fixed_support(
+                support_bary, samples_data, init_weights, weights_data, weights_distrs,
+                lr_bar=lr_bary, stopThr=stop_threshold, mode=mode, reg=reg, n_iter=n_iter, log=log
+            )
         else:
-            weights = barycenter_fixed_support(support_bary, samples_data, weight_bary, weights_data, lr_bar=lr_bary, stopThr=stop_threshold,
-                                               mode=mode, reg=reg, n_iter=n_iter)
+            weights = barycenter_fixed_support(
+                support_bary, samples_data, init_weights, weights_data, weights_distrs,
+                lr_bar=lr_bary, stopThr=stop_threshold, mode=mode, reg=reg, n_iter=n_iter
+            )
 
         if log:
             return weights, log_dict

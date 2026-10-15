@@ -83,7 +83,7 @@ def get_weights_KDE(lifted_pca):
 
 
 def plot_kde_grassmann(pca_grassmann, samples, alpha=None, ax=None, marker=None, colorbar=False,
-                       color_marker="k", label=None, xytext=(7, 7)):
+                       color_marker="k", label=None):
     """
         Plot the distribution of subspaces on the Grassmann manifold using Tangent PCA
     """
