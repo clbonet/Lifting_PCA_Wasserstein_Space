@@ -52,8 +52,13 @@ samples = torch.zeros((len(means), n, d))
 for k in range(len(means)):
     samples[k] = means[k] + torch.randn(n, d) @ sqrtm(Sigmas[k])
 
+## Initialize LiftedPCA with q=1, p=50
 lifted_pca = LiftedPCA(n_components=1, n_samples=50)
+
+## Solve LiftedPCA using the fixed-point solver
 lifted_pca.fit(samples, solver="fixed_weights")
+
+## Get the barycenter, and the value of the objective
 barycenter = lifted_pca.components_
 print("Value objective:", lifted_pca.cost_barycenter(samples).item())
 ```
