@@ -63,7 +63,8 @@ print("Value objective:", lifted_pca.cost_barycenter(samples).item())
 ## Experiments
 
 - Figure 1 can be reproduced by running the notebook `Illustration_LiftedPCA.ipynb`.
--
+- Figures 3 and 4 can be reproduced by running the notebook `xp_2d/xp_2d.ipynb`.
+- Figures 5 and 6 can be reproduced by running the notebooks in the folder `xp_datasets`.
 
 
 ## Credits
@@ -71,4 +72,4 @@ print("Value objective:", lifted_pca.cost_barycenter(samples).item())
 - G. Savaré and G. E. Sodini, *A Simple Relaxation Approach to Duality for Optimal Transport Problems in Completely Regular Spaces*, J. Convex Anal., 29 (2022), pp. 1–12.
 - H. Lavenant, *Lifting functionals defined on maps to measure-valued maps via optimal transport*, Annali della Scuola Normale Superiore di Pisa, Classe di Scienze, (2024), p. 35.
 - E. Tanguy, J. Delon, and N. Gozlan, *Computing Barycentres of Measures for Generic Transport Costs*, arXiv preprint arXiv:2501.04016, (2024).
--
+- The Student grades dataset was obtained from the Githup repository [uncertainty-aware_pca_revisited](https://github.com/lfriesecke/uncertainty-aware-pca-revisited/tree/main).
