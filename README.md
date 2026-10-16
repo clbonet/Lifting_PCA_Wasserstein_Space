@@ -2,7 +2,7 @@
 
 This repository contains the code to reproduce the experiments [Lifting PCA in the Wasserstein Space](https://arxiv.org/abs/2610.). In this paper, we lift PCA to the Wasserstein space using the lifting procedure from (Savaré and Sodini, 2022) and (Lavenant, 2024). 
 
-Let $\nu_1,\dots,\nu_n \in \mathcal{P}(\mathbb{R}^d)$ be the dataset. Define for all $i\in\{1,\dots,n\}$, $\bar{\nu}_i=T_{\bar{m}\sharp}\nu_i$ where $T_{\bar{m}}(x)=x-\bar{m}$ and $\bar{m}=\frac1n\sum_{i=1}^n m_i$ with $m_i=\int x\ d\nu_i(x)$. One of the formulation of the Lifted PCA problem is a Wasserstein berycenter $\min_{\vartheta\in \mathcal{P}(\mathrm{St}(q,d))}\ \frac1n\sum_{i=1}^n W_c(\bar{\nu}_i, \vartheta)$ with cost $c(x,U)=\|x-UU^\top x\|^2$ for $x\in\mathbb{R}^d, U\in \mathrm{St}(q,d)$. We solve it using the fixed-point solver from (Tanguy et al, 2024), using the implementation of [POT](https://pythonot.github.io/gen_modules/ot.lp.html#ot.lp.free_support_barycenter_generic_costs).
+Let $\nu_1,\dots,\nu_n \in \mathcal{P}(\mathbb{R}^d)$ be the dataset. Define for all $i\in\{1,\dots,n\}$, $\bar{\nu}_i = T_{\bar{m}\sharp}\nu_i$ where $T_{\bar{m}}(x)=x-\bar{m}$ and $\bar{m}=\frac1n\sum_{i=1}^n m_i$ with $m_i=\int x\ d\nu_i(x)$. One of the formulation of the Lifted PCA problem is a Wasserstein berycenter $\min_{\vartheta\in \mathcal{P}(\mathrm{St}(q,d))}\ \frac1n\sum_{i=1}^n W_c(\bar{\nu}_i, \vartheta)$ with cost $c(x,U)=\|x-UU^\top x\|^2$ for $x\in\mathbb{R}^d, U\in \mathrm{St}(q,d)$. We solve it using the fixed-point solver from (Tanguy et al, 2024), using the implementation of [POT](https://pythonot.github.io/gen_modules/ot.lp.html#ot.lp.free_support_barycenter_generic_costs).
 
 ![comparison_PCAs](Comparison_PCA_vs_UAPCA_vs_Lifted_PCA.png)
 
