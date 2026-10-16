@@ -74,7 +74,7 @@ print("Value objective:", lifted_pca.cost_barycenter(samples).item())
 - Figures 5 and 6 can be reproduced by running the notebooks in the folder `xp_datasets`.
 
 
-## Credits
+## Reference and Credits
 
 - G. Savaré and G. E. Sodini, *A Simple Relaxation Approach to Duality for Optimal Transport Problems in Completely Regular Spaces*, J. Convex Anal., 29 (2022), pp. 1–12.
 - H. Lavenant, *Lifting functionals defined on maps to measure-valued maps via optimal transport*, Annali della Scuola Normale Superiore di Pisa, Classe di Scienze, (2024), p. 35.
