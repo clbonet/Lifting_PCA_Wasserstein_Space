@@ -122,6 +122,17 @@ class LiftedPCA():
         self.weights_ = weight_bary
 
     def fit_from_labels(self, X, y, **args):
+        """ 
+            Fit from samples by first approximating the means and covariance matrices.
+
+            Parameters
+            ----------
+            X : torch tensor of shape (n, d)
+                Tensor of n data points
+            y : LongTensor of shape (n,), values in 0...C-1, C: number of distributions
+                Tensor containing to which distributions each point belongs
+            **args: same arguments as in fit()
+        """
         L_X = get_list_by_class(X, y)
         self.fit(L_X, **args)
 

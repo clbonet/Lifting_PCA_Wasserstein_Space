@@ -211,13 +211,26 @@ def barycenter_fixed_support(support, samples, init_weights=None, weights_sample
     if weights_barycenter is None:
         weights_barycenter = torch.ones(n_distr, device=device) / n_distr
 
+    max_sample_size = max(sample.shape[0] for sample in samples)
     if weights_samples is None:
-        weights_samples = torch.ones(n_distr, samples[0].shape[0], device=device) / samples[0].shape[0]
-    else:
-        weights_samples = torch.cat([weights_samples[k][None] for k in range(len(weights_samples))], dim=0)
+        weights_samples = [
+            torch.ones(sample.shape[0], device=device, dtype=dtype) / sample.shape[0]
+            for sample in samples
+        ]
+
+    weights_samples = torch.stack([
+        torch.nn.functional.pad(weights_samples[k], (0, max_sample_size - weights_samples[k].numel()))
+        for k in range(n_distr)
+    ])
 
     # Precompute once: support is fixed in this solver
-    C_list = torch.cat([cost_pca(support, samples[k])[None] for k in range(n_distr)], dim=0) # shape (K, n, m)
+    C_list = torch.stack([
+        torch.nn.functional.pad(
+            cost_pca(support, samples[k]),
+            (0, max_sample_size - samples[k].shape[0]),
+        )
+        for k in range(n_distr)
+    ]) # shape (K, n, max_m)
     # C_maxes = torch.tensor([C_list[k].max() for k in range(n_distr)], device=device)
     C_max = C_list.max()
 
